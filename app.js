@@ -3,6 +3,7 @@ lucide.createIcons();
 
 document.addEventListener('DOMContentLoaded', () => {
   let markers = {};
+  let currentEmergencyId = null; // Track the current guest SOS session
 
   // Map is now initialized in index.html for maximum visibility
   let map = window.leafletMap;
@@ -71,14 +72,14 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // --- Firestore Data Push ---
-  const sendSOS = async () => {
+  const sendSOS = async (type = "manual", details = "button") => {
     try {
       const { collection, addDoc } = await import("https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore.js");
       
       const payload = {
-        type: "manual",
+        type: type,
         status: "active",
-        source: "button",
+        source: details,
         timestamp: new Date()
       };
 
@@ -89,19 +90,57 @@ document.addEventListener('DOMContentLoaded', () => {
           lng: position.coords.longitude
         };
         const docRef = await addDoc(collection(window.db, "emergencies"), payload);
-        console.log("Emergency Sent with Location 🚨");
-        assignEmergency("Fire Team", docRef.id);
+        currentEmergencyId = docRef.id;
+        console.log("Emergency Sent with Location 🚨 ID:", currentEmergencyId);
+        watchEmergencyStatus(currentEmergencyId);
       }, async (error) => {
         console.warn("Location error:", error);
         const docRef = await addDoc(collection(window.db, "emergencies"), payload);
-        console.log("Emergency Sent without Location 🚨");
-        assignEmergency("Fire Team", docRef.id);
+        currentEmergencyId = docRef.id;
+        console.log("Emergency Sent without Location 🚨 ID:", currentEmergencyId);
+        watchEmergencyStatus(currentEmergencyId);
       });
 
     } catch (error) {
       console.error("Firestore Error:", error);
     }
   };
+
+  // Watch for status changes to notify the Guest
+  async function watchEmergencyStatus(id) {
+    if (!window.db || !id) return;
+    const { doc, onSnapshot } = await import("https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore.js");
+    
+    console.log(`Starting real-time monitor for SOS: ${id}`);
+    
+    const unsub = onSnapshot(doc(window.db, "emergencies", id), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        console.log("SOS Update Detected:", data.status);
+        
+        if (data.status === "assigned" && data.assignedResponder) {
+          // --- Trigger Alerts on the Guest Device ---
+          
+          // 1. Vibration
+          if ("vibrate" in navigator) {
+            navigator.vibrate([300, 100, 300]);
+          }
+
+          // 2. Browser Notification
+          if (Notification.permission === "granted") {
+            new Notification("🚨 Help is on the way!", {
+              body: `${data.assignedResponder} has been dispatched to your location. Stay calm.`,
+              icon: 'https://cdn-icons-png.flaticon.com/512/564/564619.png',
+              tag: 'resqnet-alert' // Prevent duplicate alerts
+            });
+          }
+          
+          // Stop watching once assigned
+          unsub();
+        }
+      }
+    });
+  }
 
   async function assignEmergency(team, id = null, btn = null) {
     // 1. Immediate UI Feedback
@@ -112,7 +151,6 @@ document.addEventListener('DOMContentLoaded', () => {
       btn.style.cursor = "default";
       btn.disabled = true;
 
-      // Also update the responder tag if present in the same card
       const card = btn.closest('.glass');
       if (card) {
         const tag = card.querySelector('.responder-tag');
@@ -123,21 +161,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    // 2. Browser Notification (User's Code)
-    if (Notification.permission === "granted") {
-      new Notification("🚨 Emergency Alert", {
-        body: `Emergency in Kitchen Area. Responder ${team} assigned!`,
-      });
-    } else if (Notification.permission !== "denied") {
-      const permission = await Notification.requestPermission();
-      if (permission === "granted") {
-        new Notification("🚨 Emergency Alert", {
-          body: `Emergency in Kitchen Area. Responder ${team} assigned!`,
-        });
-      }
-    }
-
-    // 2. Firestore Update
+    // 2. Firestore Update (This will trigger the watcher on the Guest's device)
     if (id && window.db) {
        const { doc, updateDoc } = await import("https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore.js");
        try {
@@ -146,23 +170,12 @@ document.addEventListener('DOMContentLoaded', () => {
              assignedResponder: team,
              assignedAt: new Date()
           });
-          
-          // --- Mobile Vibration Feedback ---
-          if ("vibrate" in navigator) {
-             navigator.vibrate([200, 100, 200]);
-             console.log("Vibration feedback triggered 📳");
-          }
-
-          // --- Browser Notification ---
-          if (Notification.permission === "granted") {
-             new Notification("🚨 Assignment Received", {
-               body: `Support team (${team}) is on the way!`,
-               icon: 'https://cdn-icons-png.flaticon.com/512/564/564619.png'
-             });
-          }
-          
-          console.log(`Emergency ${id} assigned to ${team}.`);
+          console.log(`Emergency ${id} successfully updated in database.`);
        } catch (e) {
+          console.error("Assignment error:", e);
+       }
+    }
+  }
          console.error("Assignment error:", e);
        }
     } else {
@@ -200,6 +213,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
       let isFirstSnapshot = true;
       onSnapshot(collection(window.db, "emergencies"), (snapshot) => {
+        if (!isFirstSnapshot) {
+           snapshot.docChanges().forEach((change) => {
+              if (change.type === "added") {
+                 const newSOS = change.doc.data();
+                 
+                 // --- 🔔 STAFF INSTANT ALERT ---
+                 if ("vibrate" in navigator) navigator.vibrate([400, 200, 400]);
+
+                 if (Notification.permission === "granted") {
+                    new Notification("🚨 NEW EMERGENCY DETECTED", {
+                      body: `A ${newSOS.type.toUpperCase()} SOS has just been triggered!`,
+                      icon: 'https://cdn-icons-png.flaticon.com/512/595/595067.png',
+                      requireInteraction: true
+                    });
+                 }
+                 console.log("Instant Alert triggered for new SOS 🚨");
+              }
+           });
+        }
+        isFirstSnapshot = false;
+
         if(list) list.innerHTML = "";
         snapshot.docs.forEach(docSnap => {
           const data = docSnap.data();
