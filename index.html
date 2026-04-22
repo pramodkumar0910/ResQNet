@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="ResQNet - Modern Emergency Response Platform">
+  <title>ResQNet - Emergency Response</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+  <!-- development version, includes all icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+</head>
+<body>
+  <!-- 1. Safety Activation Overlay -->
+  <div id="safety-overlay" class="safety-overlay">
+    <div class="glass safety-card-alt">
+      <div class="icon-pulse"><i data-lucide="shield-check"></i></div>
+      <h1 style="margin-bottom:0.5rem;">Hands-Free Ready</h1>
+      <p style="color:var(--text-muted); margin-bottom:2rem;">Activate real-time voice monitoring for emergency detection.</p>
+      <button id="activate-btn" class="activate-btn">ACTIVATE PROTECTION</button>
+      <p style="font-size:0.75rem; color:rgba(255,255,255,0.4); margin-top:1.5rem;">Clicking activate triggers microphone permission</p>
+    </div>
+  </div>
+
+  <!-- Main App Container -->
+  <div id="app">
+    
+    <!-- 1. Guest App View -->
+    <div id="guest-app" class="screen active guest-view animate-slide">
+      <div class="glass header-glass">
+        <h2 style="margin:0; font-size:1.2rem; color:var(--text-main);">Guest Assistance</h2>
+        <p style="color:var(--text-muted); font-size:0.9rem;">Room 402</p>
+      </div>
+
+      <div style="flex-grow:1; display:flex; flex-direction:column; justify-content:center; align-items:center; width:100%; gap:3rem;">
+        <div class="sos-container">
+          <button class="sos-btn" id="sos-trigger">SOS</button>
+          <p class="pulse-text" id="sos-hint">Press and hold for 3s</p>
+        </div>
+
+        <div class="voice-sos-container glass" style="display:flex; flex-direction:column; align-items:center; padding: 1.5rem; border-radius: 20px; gap: 0.5rem; width: 100%; max-width: 300px;">
+           <button class="mic-btn" id="mic-trigger" style="width: 60px; height: 60px; border-radius: 50%; border: none; background: rgba(0,0,0,0.4); color: var(--text-main); cursor: pointer; display:flex; justify-content:center; align-items:center; transition: all 0.3s ease;">
+             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19v3"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><rect x="9" y="2" width="6" height="13" rx="3"></rect></svg>
+           </button>
+           <p class="mic-status" id="mic-status" style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">Tap to speak emergency</p>
+           <div id="voice-transcript" class="transcript-box" style="display:none; width: 100%; background: rgba(0,0,0,0.3); border-radius: 10px; padding: 1rem; margin-top: 0.5rem; font-size: 0.9rem; color: var(--accent-cyan); text-align: center; min-height: 40px; font-style: italic;"></div>
+        </div>
+
+        <div class="emergency-types glass">
+          <div class="type-btn" onclick="selectType(this)">
+            <i data-lucide="flame"></i>
+            <span>Fire</span>
+          </div>
+          <div class="type-btn" onclick="selectType(this)">
+            <i data-lucide="cross"></i>
+            <span>Medical</span>
+          </div>
+          <div class="type-btn" onclick="selectType(this)">
+            <i data-lucide="shield-alert"></i>
+            <span>Security</span>
+          </div>
+          <div class="type-btn" onclick="selectType(this)">
+            <i data-lucide="more-horizontal"></i>
+            <span>Other</span>
+          </div>
+        </div>
+
+        <div class="glass status-card" id="active-status" style="display:none; width:100%; max-width:400px;">
+          <div style="display:flex; gap:1rem; align-items:center;">
+            <div class="icon-box"><i data-lucide="siren"></i></div>
+            <div>
+              <h3 style="color:var(--accent-red); font-size:1.1rem; margin-bottom:0.2rem;">Help is on the way</h3>
+              <p style="color:var(--text-muted); font-size:0.85rem;">Responding: Security Team</p>
+            </div>
+          </div>
+          <div style="text-align:right;">
+            <p style="font-weight:800; font-size:1.2rem; color:var(--accent-cyan);">2 min</p>
+            <p style="font-size:0.7rem; color:var(--text-muted);">ETA</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. Staff Dashboard View -->
+    <div id="staff-dash" class="screen animate-slide">
+      <div class="dashboard-header">
+        <h1>Live Feed</h1>
+        <div class="status-indicator">
+          <span class="dot pulse-dot"></span> System Active
+        </div>
+      </div>
+
+      <div id="emergency-list"></div>
+      <div class="dashboard-grid">
+        <div class="glass feed-card critical shake-hover">
+          <div class="feed-header">
+            <span class="badge critical"><i data-lucide="flame" style="width:14px;height:14px;vertical-align:-2px;"></i> Fire</span>
+            <span style="font-size:0.8rem; color:var(--text-muted);">Just now</span>
+          </div>
+          <h3 style="margin-bottom:0.3rem;">Kitchen Area - Floor 1</h3>
+          <p style="color:var(--text-muted); font-size:0.9rem; margin-bottom:1rem;">Smoke detector triggered. Auto-alert sent.</p>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+             <span class="responder-tag">Unassigned</span>
+             <button class="assign-btn" onclick="assignEmergency('fire-team', null, this)">Assign</button>
+          </div>
+        </div>
+
+        <div class="glass feed-card moderate">
+          <div class="feed-header">
+             <span class="badge moderate"><i data-lucide="cross" style="width:14px;height:14px;vertical-align:-2px;"></i> Medical</span>
+             <span style="font-size:0.8rem; color:var(--text-muted);">2m ago</span>
+          </div>
+          <h3 style="margin-bottom:0.3rem;">Poolside - Resort</h3>
+          <p style="color:var(--text-muted); font-size:0.9rem; margin-bottom:1rem;">Guest reported minor injury via Guest App.</p>
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+             <span class="responder-tag active">Med Team A</span>
+             <button class="assign-btn" onclick="assignEmergency('med-team', null, this)">Assign</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. Map View -->
+    <div id="map-view" class="screen animate-slide">
+      <div class="dashboard-header">
+        <h1>Radar Map</h1>
+      </div>
+      <div class="map-layout">
+        <div id="map" class="map-container glass" style="height:400px;"></div>
+        <div class="map-sidebar glass">
+           <h3 style="margin-bottom:1rem;">Active Incidents</h3>
+           <div class="incident-list">
+              <div class="incident-item">
+                 <div class="dot critical"></div>
+                 <div>
+                    <h4 style="font-size:0.9rem;">Kitchen Area</h4>
+                    <span style="font-size:0.75rem; color:var(--text-muted);">Critical - Unassigned</span>
+                 </div>
+              </div>
+              <div class="incident-item">
+                 <div class="dot moderate"></div>
+                 <div>
+                    <h4 style="font-size:0.9rem;">Poolside</h4>
+                    <span style="font-size:0.75rem; color:var(--text-muted);">Moderate - Med Team A</span>
+                 </div>
+              </div>
+           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. Admin Panel -->
+    <div id="admin-panel" class="screen animate-slide">
+      <div class="dashboard-header">
+        <h1>System Analytics</h1>
+        <button id="report-btn" class="action-btn"><i data-lucide="download"></i> Report</button>
+      </div>
+
+      <div class="stats-grid">
+         <div class="glass stat-card">
+            <h4 class="stat-label">Active Incidents</h4>
+            <div id="active-incidents-count" class="stat-value" style="background: linear-gradient(to right, #ef4444, #f59e0b); -webkit-background-clip: text;">2</div>
+         </div>
+         <div class="glass stat-card">
+            <h4 class="stat-label">Avg Response Time</h4>
+            <div id="avg-response-time" class="stat-value">1m 45s</div>
+         </div>
+         <div class="glass stat-card">
+            <h4 class="stat-label">Total Today</h4>
+            <div id="total-today-count" class="stat-value">14</div>
+         </div>
+         <div class="glass stat-card" style="display:flex; flex-direction:column; justify-content:center; align-items:center;">
+             <h4 class="stat-label" style="margin-bottom:1rem;">System Status</h4>
+             <label class="switch">
+                <input type="checkbox" checked>
+                <span class="slider round"></span>
+             </label>
+         </div>
+      </div>
+
+      <!-- Graph Placeholder -->
+      <div class="glass graph-container">
+         <div style="display:flex; justify-content:space-between; margin-bottom:2rem;">
+            <h3 style="color:var(--text-main);">Response Trends</h3>
+            <select class="dark-select"><option>Today</option><option>Last 7 Days</option></select>
+         </div>
+         <div class="mock-chart">
+            <div class="bar" style="height:40%;"><div class="bar-tooltip">8 AM: 2 mins</div></div>
+            <div class="bar" style="height:60%;"><div class="bar-tooltip">10 AM: 3 mins</div></div>
+            <div class="bar" style="height:20%;"><div class="bar-tooltip">12 PM: 1 min</div></div>
+            <div class="bar" style="height:80%;" class="alert"><div class="bar-tooltip">2 PM: 4 mins (High)</div></div>
+            <div class="bar" style="height:30%;"><div class="bar-tooltip">4 PM: 1.5 mins</div></div>
+            <div class="bar" style="height:50%;"><div class="bar-tooltip">6 PM: 2.5 mins</div></div>
+         </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Bottom Navigation -->
+  <nav class="nav-bar glass">
+    <a href="#" class="nav-item active" data-target="guest-app">
+      <i data-lucide="smartphone"></i>
+      <span>Guest App</span>
+    </a>
+    <a href="#" class="nav-item" data-target="staff-dash">
+      <i data-lucide="layout-dashboard"></i>
+      <span>Feed</span>
+    </a>
+    <a href="#" class="nav-item" data-target="map-view">
+      <i data-lucide="map"></i>
+      <span>Map</span>
+    </a>
+    <a href="#" class="nav-item" data-target="admin-panel">
+      <i data-lucide="settings"></i>
+      <span>Admin</span>
+    </a>
+  </nav>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-app.js";
+    import { getFirestore } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyD3wMMvgRAKs89Ty1cbEf9Nz5qt18sGnbs",
+      authDomain: "resqnet-6155a.firebaseapp.com",
+      projectId: "resqnet-6155a",
+      storageBucket: "resqnet-6155a.firebasestorage.app",
+      messagingSenderId: "856941506007",
+      appId: "1:856941506007:web:08cba4d361197db18bef92"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    window.db = db;
+  </script>
+  <script>
+  const map = L.map('map').setView([13.0827, 80.2707], 13);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  L.marker([13.0827, 80.2707]).addTo(map)
+    .bindPopup("Emergency Location")
+    .openPopup();
+    
+  // Make map globally accessible for app.js
+  window.leafletMap = map;
+  </script>
+  <script src="js/app.js"></script>
+</body>
+</html>
